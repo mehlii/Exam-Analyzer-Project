@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Analiz Detayı - Sınav Analizi{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-8 mx-auto">
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 class="card-title mb-0">Analiz Detayı</h4>
+                    <span class="badge bg-secondary">{{ analysis.created_at|date:"d F Y" }}</span>
+                </div>
+                <hr>
+                <div class="row mb-3">
+                    <div class="col-sm-4 text-muted">Dosya Adı:</div>
+                    <div class="col-sm-8 fw-bold">{{ analysis.pdf_file.name }}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-4 text-muted">Öğrenci:</div>
+                    <div class="col-sm-8 fw-bold">{{ user.get_full_name|default:user.username }}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-4 text-muted">Model R² Skoru:</div>
+                    <div class="col-sm-8 fw-bold">{{ summary.r2_score|default:"Bilinmiyor" }}</div>
+                </div>
+                <div class="row mb-4">
+                    <div class="col-sm-4 text-muted align-self-center">Ortalama / Tahmin:</div>
+                    <div class="col-sm-8">
+                        <span class="badge bg-success fs-5 px-3 py-2">{{ summary.mean|floatformat:1|default:"Hesaplanmadı" }} Puan</span>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <a href="{% url 'analysis:history' %}" class="btn btn-outline-secondary px-4">Listeye Geri Dön</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

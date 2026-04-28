@@ -126,3 +126,9 @@ LOGOUT_REDIRECT_URL = '/accounts/login/'
 
 # Türkçe not: Oturum süresi (30 dakika)
 SESSION_COOKIE_AGE = 1800
+
+# Türkçe not: Her istekte oturum süresi yenilensin
+SESSION_SAVE_EVERY_REQUEST = True
+
+# Türkçe not: Geliştirme ortamında HTTPS zorunlu değil
+CSRF_COOKIE_SECURE = False

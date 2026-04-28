@@ -1,7 +1,10 @@
 import pdfplumber
 import pandas as pd
+import os
 
 def extract_exam_data(pdf_path):
+    if not os.path.isabs(pdf_path):
+        pdf_path = os.path.join(os.getcwd(), pdf_path)
 
     all_data = []
     try:

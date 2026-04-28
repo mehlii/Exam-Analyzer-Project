@@ -37,6 +37,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # Türkçe not: Proje uygulamaları
+    'accounts',
+    'analysis',
 ]
 
 MIDDLEWARE = [
@@ -115,3 +118,11 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Türkçe not: Auth yönlendirmeleri
+LOGIN_URL = '/accounts/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/accounts/login/'
+
+# Türkçe not: Oturum süresi (30 dakika)
+SESSION_COOKIE_AGE = 1800

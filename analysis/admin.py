@@ -35,4 +35,3 @@ class ScoreAdmin(admin.ModelAdmin):
     search_fields = ("subject", "analysis__file_name", "analysis__user__username")
     date_hierarchy = "exam_date"
     ordering = ("-exam_date",)
-

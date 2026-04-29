@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Sınav Performans Analiz Sistemi{% endblock %}
+
+{% block content %}
+<div class="container py-5 text-center">
+    <h1 class="display-5 fw-bold mb-3">Sınav Performans Analiz Sistemi</h1>
+    <p class="lead text-muted mb-4">
+        Sınav sonuç PDF'lerini yükleyin; sistem otomatik analiz yapar,
+        grafiklerle gösterir ve bir sonraki sınavınızı tahmin eder.
+    </p>
+    <div class="d-flex justify-content-center gap-2">
+        <a href="{% url 'accounts:login' %}" class="btn btn-primary btn-lg">Giriş Yap</a>
+        <a href="{% url 'accounts:register' %}" class="btn btn-outline-primary btn-lg">Kayıt Ol</a>
+    </div>
+</div>
+{% endblock %}

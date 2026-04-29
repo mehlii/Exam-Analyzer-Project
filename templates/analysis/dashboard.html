@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Kontrol Paneli - Sınav Analizi{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Analiz Sonuçları (Özet)</h2>
+
+{% if latest %}
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card text-white bg-primary mb-3 shadow-sm border-0">
+                <div class="card-body text-center py-4">
+                    <h5 class="card-title">Genel Ortalama</h5>
+                    <h1 class="display-3 fw-bold mt-2">{{ summary.mean|floatformat:1 }}</h1>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <canvas id="myChart" height="120"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const ctx = document.getElementById('myChart');
+        
+        // Nisa'nın Python'dan gönderdiği JSON verisini güvenli bir şekilde (safe) JS'e alıyoruz
+        const chartData = {{ chart_data_json|safe }};
+
+        new Chart(ctx, {
+            type: 'bar',
+            data: chartData, // Artık statik veriler değil, Nisa'nın verileri okunacak
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' }
+                }
+            }
+        });
+    </script>
+
+{% else %}
+    <div class="alert alert-info text-center py-5 shadow-sm">
+        <h4 class="alert-heading">Henüz bir veri yok!</h4>
+        <p>Sınav analizinizi görebilmek için lütfen önce bir PDF dosyası yükleyin.</p>
+        <a href="{% url 'analysis:upload' %}" class="btn btn-primary mt-3">PDF Yükle</a>
+    </div>
+{% endif %}
+
+{% endblock %}

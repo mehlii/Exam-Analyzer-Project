@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}PDF Yükle - Sınav Analizi{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6">
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-5 text-center">
+                <h2 class="mb-4">Sınav Sonucu Yükle</h2>
+                <p class="text-muted mb-4">Analiz edilecek PDF dosyasını buraya sürükleyin veya seçin.</p>
+                
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <div class="mb-4">
+                        {{ form.pdf_file }}
+                    </div>
+                    
+                    <button type="submit" class="btn btn-success btn-lg w-100">Analizi Başlat</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

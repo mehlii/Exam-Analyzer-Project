@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Giriş Yap - Sınav Analizi{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-4">
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-4">
+                <h3 class="card-title text-center mb-4">Sisteme Giriş</h3>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    {{ form.as_p }}
+                    
+                    <button type="submit" class="btn btn-dark w-100 mt-3">Giriş Yap</button>
+                </form>
+                
+                <div class="text-center mt-3">
+                    <small class="text-muted">Hesabın yok mu? <a href="{% url 'accounts:register' %}">Kayıt Ol</a></small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

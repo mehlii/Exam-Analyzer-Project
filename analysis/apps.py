@@ -1,3 +1,6 @@
+# analysis/apps.py
+# Türkçe not: analysis uygulama konfigürasyonu.
+
 from django.apps import AppConfig
 
 

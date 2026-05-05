@@ -1,17 +1,325 @@
 {% extends "base.html" %}
 
-{% block title %}Sınav Performans Analiz Sistemi{% endblock %}
+{% block title %}ExamAI — AI-Powered Exam Performance Analysis{% endblock %}
+
+{% block extra_head %}
+<style>
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+    @keyframes pulse-glow { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+    .hero-section { padding: 6rem 0 4rem; position: relative; overflow: hidden; }
+    .hero-section::before {
+        content: ""; position: absolute; inset: 0; pointer-events: none;
+        background:
+            radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.15), transparent 50%),
+            radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.15), transparent 50%);
+    }
+    .hero-headline {
+        font-size: clamp(2.25rem, 5vw, 3.75rem);
+        line-height: 1.1; font-weight: 800; letter-spacing: -0.03em;
+    }
+    .hero-eyebrow {
+        display: inline-flex; align-items: center; gap: 0.5rem;
+        background: var(--bg-glass); border: 1px solid var(--border-soft);
+        padding: 0.4rem 0.9rem; border-radius: 999px;
+        font-size: 0.825rem; color: var(--text-secondary);
+        margin-bottom: 1.5rem; backdrop-filter: blur(10px);
+    }
+    .hero-eyebrow .dot {
+        width: 6px; height: 6px; border-radius: 50%;
+        background: var(--neon-violet); box-shadow: 0 0 10px var(--neon-violet);
+        animation: pulse-glow 2s infinite;
+    }
+    .hero-sub {
+        font-size: 1.125rem; line-height: 1.7;
+        color: var(--text-secondary);
+        margin: 1.25rem 0 2rem; max-width: 540px;
+    }
+    .hero-cta { display: flex; gap: 1rem; flex-wrap: wrap; }
+
+    .dashboard-preview { position: relative; animation: float 6s ease-in-out infinite; }
+    .dashboard-preview::before {
+        content: ""; position: absolute; inset: -40px; z-index: -1;
+        background: radial-gradient(circle, rgba(139, 92, 246, 0.25), transparent 70%);
+        filter: blur(40px);
+    }
+    .dash-card { padding: 1.25rem; }
+    .dash-stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem; }
+    .dash-stat {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border-soft);
+        border-radius: 14px; padding: 0.85rem 1rem;
+    }
+    .dash-stat .label { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+    .dash-stat .value { font-size: 1.5rem; font-weight: 700; margin-top: 0.25rem; }
+    .dash-stat.accent-blue .value { color: #60a5fa; }
+    .dash-stat.accent-violet .value { color: #a78bfa; }
+    .dash-stat.accent-green .value { color: #34d399; }
+    .dash-stat.accent-pink .value { color: #f472b6; }
+
+    .ring-progress {
+        --p: 85;
+        width: 110px; height: 110px; border-radius: 50%;
+        background: conic-gradient(from -90deg, #3b82f6, #8b5cf6 calc(var(--p) * 1%), rgba(255,255,255,0.06) 0);
+        display: grid; place-items: center; position: relative;
+    }
+    .ring-progress::after { content: ""; position: absolute; inset: 8px; background: var(--bg-deep); border-radius: 50%; }
+    .ring-progress .label { position: relative; z-index: 1; text-align: center; }
+    .ring-progress .label .num { font-size: 1.6rem; font-weight: 800; color: #fff; }
+    .ring-progress .label .max { font-size: 0.75rem; color: var(--text-secondary); }
+
+    .mini-bars { display: flex; align-items: flex-end; gap: 0.45rem; height: 80px; padding-top: 0.5rem; }
+    .mini-bars .bar {
+        flex: 1; border-radius: 4px 4px 0 0;
+        background: linear-gradient(to top, rgba(59, 130, 246, 0.3), rgba(139, 92, 246, 0.8));
+    }
+
+    .donut {
+        width: 80px; height: 80px; border-radius: 50%;
+        background: conic-gradient(#3b82f6 0 45%, #8b5cf6 45% 75%, #ec4899 75% 100%);
+        position: relative;
+    }
+    .donut::after { content: ""; position: absolute; inset: 14px; background: var(--bg-deep); border-radius: 50%; }
+
+    .trend-line { width: 100%; height: 90px; }
+
+    .feature-card { height: 100%; transition: transform 0.25s, border-color 0.25s, box-shadow 0.25s; }
+    .feature-card:hover {
+        transform: translateY(-6px);
+        border-color: rgba(139, 92, 246, 0.4);
+        box-shadow: 0 20px 60px rgba(139, 92, 246, 0.18);
+    }
+    .feature-icon {
+        width: 48px; height: 48px; display: grid; place-items: center;
+        border-radius: 12px;
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2));
+        border: 1px solid rgba(139, 92, 246, 0.3);
+        margin-bottom: 1.25rem; font-size: 1.5rem;
+    }
+    .feature-title { font-size: 1.1rem; margin-bottom: 0.5rem; }
+    .feature-desc { color: var(--text-secondary); font-size: 0.95rem; line-height: 1.6; margin: 0; }
+
+    .stat-num {
+        font-size: 2.25rem; font-weight: 800;
+        background: var(--gradient-text);
+        -webkit-background-clip: text; background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    .stat-label { color: var(--text-secondary); font-size: 0.95rem; }
+
+    .demo-card {
+        padding: 2.5rem;
+        background:
+            radial-gradient(circle at 20% 0%, rgba(139, 92, 246, 0.15), transparent 50%),
+            var(--bg-glass);
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="container py-5 text-center">
-    <h1 class="display-5 fw-bold mb-3">Sınav Performans Analiz Sistemi</h1>
-    <p class="lead text-muted mb-4">
-        Sınav sonuç PDF'lerini yükleyin; sistem otomatik analiz yapar,
-        grafiklerle gösterir ve bir sonraki sınavınızı tahmin eder.
-    </p>
-    <div class="d-flex justify-content-center gap-2">
-        <a href="{% url 'accounts:login' %}" class="btn btn-primary btn-lg">Giriş Yap</a>
-        <a href="{% url 'accounts:register' %}" class="btn btn-outline-primary btn-lg">Kayıt Ol</a>
+
+<section class="hero-section">
+    <div class="container">
+        <div class="row align-items-center g-5">
+            <div class="col-lg-6">
+                <span class="hero-eyebrow"><span class="dot"></span>AI-powered analysis · YMH210/220</span>
+                <h1 class="hero-headline">
+                    <span class="text-gradient">Analyze Your Exam<br>Performance with AI</span>
+                </h1>
+                <p class="hero-sub">
+                    Upload your exam result PDFs; the system automatically extracts your
+                    data, analyzes it by subject, and predicts your next exam score using
+                    linear regression. All in a single click.
+                </p>
+                <div class="hero-cta">
+                    <a href="{% url 'accounts:register' %}" class="btn btn-gradient btn-lg">Start Free →</a>
+                    <a href="#features" class="btn btn-ghost btn-lg">How It Works</a>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="dashboard-preview">
+                    <div class="glass-card glass-card-strong dash-card">
+
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <div>
+                                <div class="text-secondary" style="font-size: 0.78rem;">PERFORMANCE DASHBOARD</div>
+                                <div style="font-size: 1.15rem; font-weight: 700;">Latest Analysis</div>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <span style="width:10px;height:10px;border-radius:50%;background:#ef4444;display:inline-block;"></span>
+                                <span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block;"></span>
+                                <span style="width:10px;height:10px;border-radius:50%;background:#22c55e;display:inline-block;"></span>
+                            </div>
+                        </div>
+
+                        <div class="dash-stat-grid">
+                            <div class="dash-stat accent-blue"><div class="label">Average</div><div class="value">85.3</div></div>
+                            <div class="dash-stat accent-violet"><div class="label">Predicted</div><div class="value">88.7</div></div>
+                            <div class="dash-stat accent-green"><div class="label">Correct</div><div class="value">142</div></div>
+                            <div class="dash-stat accent-pink"><div class="label">Wrong</div><div class="value">18</div></div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span style="font-size:0.85rem; color: var(--text-secondary);">Performance Trend</span>
+                                <span class="badge" style="background: rgba(34,197,94,0.15); color: #6ee7b7;">↑ 12.4%</span>
+                            </div>
+                            <svg class="trend-line" viewBox="0 0 300 90" preserveAspectRatio="none">
+                                <defs>
+                                    <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.5"/>
+                                        <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+                                    </linearGradient>
+                                    <linearGradient id="trendStroke" x1="0" y1="0" x2="1" y2="0">
+                                        <stop offset="0%" stop-color="#3b82f6"/>
+                                        <stop offset="100%" stop-color="#a78bfa"/>
+                                    </linearGradient>
+                                </defs>
+                                <path d="M0,70 L40,55 L80,60 L120,42 L160,48 L200,30 L240,22 L300,12 L300,90 L0,90 Z" fill="url(#trendFill)"/>
+                                <path d="M0,70 L40,55 L80,60 L120,42 L160,48 L200,30 L240,22 L300,12" fill="none" stroke="url(#trendStroke)" stroke-width="2.5" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+
+                        <div class="row g-2 align-items-center">
+                            <div class="col-5">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="ring-progress">
+                                        <div class="label">
+                                            <div class="num">85</div>
+                                            <div class="max">/ 100</div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div style="font-size:0.78rem;color:var(--text-secondary);">SCORE</div>
+                                        <div style="font-weight:700;">Good</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.4rem;">SUBJECT BREAKDOWN</div>
+                                <div class="mini-bars">
+                                    <div class="bar" style="height: 60%"></div>
+                                    <div class="bar" style="height: 85%"></div>
+                                    <div class="bar" style="height: 45%"></div>
+                                    <div class="bar" style="height: 70%"></div>
+                                    <div class="bar" style="height: 90%"></div>
+                                </div>
+                            </div>
+                            <div class="col-3 text-center">
+                                <div class="donut mx-auto"></div>
+                                <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:0.4rem;">DISTRIBUTION</div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-</div>
+</section>
+
+<section class="section" style="padding-top: 1rem;">
+    <div class="container">
+        <div class="glass-card">
+            <div class="row text-center g-3">
+                <div class="col-6 col-md-3">
+                    <div class="stat-num">5s</div>
+                    <div class="stat-label">Average analysis time</div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat-num">∞</div>
+                    <div class="stat-label">Reports per account</div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat-num">99.9%</div>
+                    <div class="stat-label">System uptime</div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="stat-num">100%</div>
+                    <div class="stat-label">Local &amp; private</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="features" class="section">
+    <div class="container">
+        <div class="text-center mb-5">
+            <h2 class="display-6 fw-bold"><span class="text-gradient">One PDF, four layers of insight</span></h2>
+            <p class="text-secondary mt-2">Smart reports automatically extracted from your exam results.</p>
+        </div>
+        <div class="row g-4">
+            <div class="col-md-6 col-lg-3">
+                <div class="glass-card feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h5 class="feature-title">Automated Analysis</h5>
+                    <p class="feature-desc">Upload your PDF — table data is instantly extracted and cleaned. No manual entry.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-3">
+                <div class="glass-card feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h5 class="feature-title">Visual Reports</h5>
+                    <p class="feature-desc">Subject-level bar charts, time-based trends, and distribution graphs in a single panel.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-3">
+                <div class="glass-card feature-card">
+                    <div class="feature-icon">🤖</div>
+                    <h5 class="feature-title">AI Prediction</h5>
+                    <p class="feature-desc">Predicts your next exam score using linear regression along with an R² confidence score.</p>
+                </div>
+            </div>
+            <div class="col-md-6 col-lg-3">
+                <div class="glass-card feature-card">
+                    <div class="feature-icon">🔍</div>
+                    <h5 class="feature-title">Subject Insights</h5>
+                    <p class="feature-desc">See where you're strong and where to improve — explained with numbers and visuals.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="glass-card glass-card-strong demo-card">
+            <div class="row align-items-center g-4">
+                <div class="col-md-7">
+                    <h2 class="fw-bold mb-3"><span class="text-gradient">Try the Demo</span></h2>
+                    <p class="text-secondary mb-4">
+                        After signing up, try a sample exam PDF and see how the system works.
+                        A full analysis report is ready in seconds.
+                    </p>
+                    <a href="{% url 'accounts:register' %}" class="btn btn-gradient">Create Free Account →</a>
+                </div>
+                <div class="col-md-5">
+                    <div class="d-flex justify-content-around text-center">
+                        <div>
+                            <div style="font-size:2rem;font-weight:800;color:#60a5fa;">PDF</div>
+                            <div class="text-secondary" style="font-size:0.8rem;">Upload</div>
+                        </div>
+                        <div style="font-size:1.5rem;color:var(--text-secondary);">→</div>
+                        <div>
+                            <div style="font-size:2rem;font-weight:800;color:#a78bfa;">AI</div>
+                            <div class="text-secondary" style="font-size:0.8rem;">Analyze</div>
+                        </div>
+                        <div style="font-size:1.5rem;color:var(--text-secondary);">→</div>
+                        <div>
+                            <div style="font-size:2rem;font-weight:800;color:#f472b6;">📈</div>
+                            <div class="text-secondary" style="font-size:0.8rem;">Report</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<footer class="container py-5 text-center">
+    <p class="text-secondary mb-0" style="font-size:0.9rem;">ExamAI · YMH210/220 Group Project · 2026</p>
+</footer>
+
 {% endblock %}

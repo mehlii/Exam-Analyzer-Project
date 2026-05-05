@@ -1,39 +1,170 @@
 {% extends "base.html" %}
 
-{% block title %}Analiz Detayı - Sınav Analizi{% endblock %}
+{% block title %}Analysis Detail — ExamAI{% endblock %}
 
 {% block content %}
-<div class="row mt-4">
-    <div class="col-md-8 mx-auto">
-        <div class="card shadow-sm border-0">
-            <div class="card-body p-4">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="card-title mb-0">Analiz Detayı</h4>
-                    <span class="badge bg-secondary">{{ analysis.created_at|date:"d F Y" }}</span>
+<div class="container py-5">
+    <div class="row">
+        <div class="col-lg-10 mx-auto">
+
+            <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+                <div>
+                    <h2 class="mb-1"><span class="text-gradient">Analysis Detail</span></h2>
+                    <p class="text-secondary mb-0">{{ analysis.uploaded_at|date:"d F Y H:i" }}</p>
                 </div>
-                <hr>
-                <div class="row mb-3">
-                    <div class="col-sm-4 text-muted">Dosya Adı:</div>
-                    <div class="col-sm-8 fw-bold">{{ analysis.pdf_file.name }}</div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-sm-4 text-muted">Öğrenci:</div>
-                    <div class="col-sm-8 fw-bold">{{ user.get_full_name|default:user.username }}</div>
-                </div>
-                <div class="row mb-3">
-                    <div class="col-sm-4 text-muted">Model R² Skoru:</div>
-                    <div class="col-sm-8 fw-bold">{{ summary.r2_score|default:"Bilinmiyor" }}</div>
-                </div>
-                <div class="row mb-4">
-                    <div class="col-sm-4 text-muted align-self-center">Ortalama / Tahmin:</div>
-                    <div class="col-sm-8">
-                        <span class="badge bg-success fs-5 px-3 py-2">{{ summary.mean|floatformat:1|default:"Hesaplanmadı" }} Puan</span>
+                <a href="{% url 'analysis:history' %}" class="btn btn-ghost">← Back to List</a>
+            </div>
+
+            <div class="row g-4 mb-4">
+                <div class="col-md-4">
+                    <div class="glass-card glass-card-strong text-center py-4">
+                        <div class="text-secondary" style="font-size:0.78rem;letter-spacing:0.05em;">OVERALL AVERAGE</div>
+                        <div class="display-5 fw-bold mt-2 text-gradient">{{ summary.mean|floatformat:1|default:"—" }}</div>
                     </div>
                 </div>
-                <div class="text-center">
-                    <a href="{% url 'analysis:history' %}" class="btn btn-outline-secondary px-4">Listeye Geri Dön</a>
+                <div class="col-md-4">
+                    <div class="glass-card glass-card-strong text-center py-4">
+                        <div class="text-secondary" style="font-size:0.78rem;letter-spacing:0.05em;">NEXT PREDICTION</div>
+                        {% if analysis.predicted_score is not None %}
+                        <div class="display-5 fw-bold mt-2" style="color:#a78bfa;">{{ analysis.predicted_score|floatformat:1 }}</div>
+                        <div class="text-secondary" style="font-size:0.8rem;">R² {{ analysis.r2_score|floatformat:2 }}</div>
+                        {% else %}
+                        <div class="text-secondary mt-3" style="font-size:0.95rem;">Insufficient data</div>
+                        <div class="text-secondary" style="font-size:0.78rem;">At least 2 separate exams required</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="glass-card glass-card-strong py-4 px-4 h-100">
+                        <div class="text-secondary mb-2" style="font-size:0.78rem;letter-spacing:0.05em;">DETAILS</div>
+                        <div class="mb-2" style="font-size:0.9rem;">
+                            <span class="text-secondary">Student:</span>
+                            <span class="fw-bold ms-1">{{ analysis.student_name|default:user.get_full_name|default:user.username }}</span>
+                        </div>
+                        <div style="font-size:0.9rem;">
+                            <span class="text-secondary">File:</span>
+                            <span class="fw-bold ms-1">{{ analysis.file_name|default:analysis.pdf_file.name }}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
+
+            {% if scores %}
+            <div class="glass-card mb-4">
+                <h6 class="mb-3 text-secondary" style="letter-spacing:0.05em;">SUBJECT AVERAGES</h6>
+                <canvas id="detailChart" height="100"></canvas>
+            </div>
+
+            <div class="glass-card p-0 overflow-hidden mb-4">
+                <div class="p-4 pb-2">
+                    <h6 class="mb-0 text-secondary" style="letter-spacing:0.05em;">SUBJECT-LEVEL RESULTS</h6>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr><th class="ps-4">Subject</th><th class="text-end">Score</th><th class="pe-4">Date</th></tr>
+                        </thead>
+                        <tbody>
+                            {% for s in scores %}
+                            <tr>
+                                <td class="ps-4">{{ s.subject }}</td>
+                                <td class="text-end fw-bold">{{ s.score|floatformat:2 }}</td>
+                                <td class="pe-4 text-secondary">{{ s.exam_date|date:"d.m.Y"|default:"—" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <script>
+                const chartData = {{ chart_data_json|safe }};
+                new Chart(document.getElementById('detailChart'), {
+                    type: 'bar',
+                    data: chartData,
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { labels: { color: '#cbd5e1' } } },
+                        scales: {
+                            x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true, max: 100 }
+                        }
+                    }
+                });
+            </script>
+            {% endif %}
+
+            {% with advice=analysis.summary_json.ai_advice %}
+            {% if advice and advice.subjects %}
+            <div class="glass-card glass-card-strong mb-4" style="position: relative;">
+                <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+                    <div>
+                        <div class="text-secondary" style="font-size:0.78rem;letter-spacing:0.05em;">ASSESSMENT</div>
+                        <h4 class="mb-0"><span class="text-gradient">AI Tutor Feedback</span></h4>
+                    </div>
+                    {% if advice.source == "ai" %}
+                        <span class="badge" style="background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;padding:0.45rem 0.85rem;font-size:0.75rem;">✨ AI</span>
+                    {% else %}
+                        <span class="badge" style="background:rgba(148,163,184,0.15);color:#cbd5e1;padding:0.45rem 0.85rem;font-size:0.75rem;">Automatic</span>
+                    {% endif %}
+                </div>
+
+                {% if advice.overall %}
+                <p style="font-size:1.02rem;line-height:1.65;color:#e2e8f0;margin-bottom:1.5rem;">{{ advice.overall }}</p>
+                {% endif %}
+
+                <h6 class="text-secondary mb-3" style="letter-spacing:0.05em;">SUBJECT-LEVEL FEEDBACK</h6>
+                <div class="row g-3 mb-4">
+                    {% for s in advice.subjects %}
+                    <div class="col-md-6">
+                        <div class="glass-card h-100" style="padding:1.1rem 1.25rem;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <strong>{{ s.subject }}</strong>
+                                {% if s.priority == "yuksek" or s.priority == "high" %}
+                                    <span class="badge" style="background:rgba(239,68,68,0.18);color:#fca5a5;padding:0.3rem 0.6rem;font-size:0.7rem;" title="Prioritize this subject">PRIORITY</span>
+                                {% elif s.priority == "orta" or s.priority == "medium" %}
+                                    <span class="badge" style="background:rgba(234,179,8,0.18);color:#fde68a;padding:0.3rem 0.6rem;font-size:0.7rem;" title="Room for improvement">IMPROVE</span>
+                                {% else %}
+                                    <span class="badge" style="background:rgba(34,197,94,0.18);color:#86efac;padding:0.3rem 0.6rem;font-size:0.7rem;" title="You're strong in this subject">STRONG</span>
+                                {% endif %}
+                            </div>
+                            <p class="mb-2" style="font-size:0.92rem;line-height:1.55;color:#cbd5e1;">{{ s.commentary }}</p>
+                            {% if s.weak_topics %}
+                            <div class="d-flex flex-wrap gap-1 mt-2 mb-3">
+                                {% for topic in s.weak_topics %}
+                                <span class="badge" style="background:rgba(139,92,246,0.15);color:#c4b5fd;border:1px solid rgba(139,92,246,0.3);padding:0.35rem 0.7rem;font-size:0.72rem;font-weight:500;border-radius:999px;">{{ topic }}</span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            {% if s.weak_topics_detailed %}
+                            <div class="study-guide mt-3 pt-3" style="border-top:1px solid rgba(255,255,255,0.06);">
+                                <div class="text-secondary mb-2" style="font-size:0.72rem;letter-spacing:0.08em;">📚 WEAK TOPICS — HOW TO STUDY</div>
+                                {% for item in s.weak_topics_detailed %}
+                                <div class="mb-3" style="padding-left:0.75rem;border-left:2px solid rgba(139,92,246,0.4);">
+                                    <div class="fw-bold mb-1" style="font-size:0.88rem;color:#e2e8f0;">{{ item.topic }}</div>
+                                    <div style="font-size:0.85rem;line-height:1.55;color:#94a3b8;">{{ item.study }}</div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {% if advice.next_steps %}
+                <h6 class="text-secondary mb-3" style="letter-spacing:0.05em;">NEXT STEPS</h6>
+                <ol style="padding-left:1.2rem;margin-bottom:0;">
+                    {% for step in advice.next_steps %}
+                    <li style="color:#cbd5e1;line-height:1.6;margin-bottom:0.4rem;">{{ step }}</li>
+                    {% endfor %}
+                </ol>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% endwith %}
+
         </div>
     </div>
 </div>

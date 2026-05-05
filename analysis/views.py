@@ -1,109 +1,192 @@
-# analysis/views.py
-# Türkçe not: Nisa'nın view'ları (merge sonrası import güvenli hale getirildi).
-
 """
 analysis.views — Nisa Apaydın
 
-Sistemin pipeline orkestratörü: PDF yükle → core'u çağır → DB'ye yaz → kullanıcıya göster.
+Pipeline orkestratörü: PDF yükle → core'u çağır → DB'ye yaz → kullanıcıya göster.
 
-Aşağıdaki import'lar ekip arkadaşları kendi parçalarını landlemeden ImportError verir:
-- core.* modülleri Mehlika ve İdil tarafından yazılacak.
-- analysis.models içindeki Analysis ve Score Güler tarafından tanımlanacak.
+Domain adapter notu: Mehlika'nın çıktısı (Türkçe kolonlar: Ders/Soru/Yanlış/Doğru)
+ile İdil'in beklediği kanonik şema (subject/score/exam_date) farklı; aşağıdaki
+upload_view içinde adapter ile köprü kuruluyor.
 """
 
 import json
 import logging
+from datetime import date
+from pathlib import Path
 
+import pandas as pd
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 
+from analysis.forms import PDFUploadForm
 from analysis.models import Analysis, Score
+from core.ai_advisor import analyze as ai_analyze
+from core.analyzer import compute_summary
+from core.pdf_reader import extract_exam_data
+from core.predictor import predict_next_score
+from core.vision_extractor import extract_via_vision
 
 logger = logging.getLogger("analysis.views")
 
 HISTORY_PAGE_SIZE = 10
 DASHBOARD_RECENT_SCORES = 5
 
-try:
-    from analysis.forms import PDFUploadForm  # type: ignore
-except Exception:  # pragma: no cover
-    PDFUploadForm = None
-
-try:
-    from core.analyzer import compute_summary  # type: ignore
-    from core.cleaner import clean_dataframe  # type: ignore
-    from core.pdf_reader import extract_tables  # type: ignore
-    from core.predictor import predict_next_score  # type: ignore
-except Exception:  # pragma: no cover
-    compute_summary = clean_dataframe = extract_tables = predict_next_score = None
+CHART_BG = "rgba(54, 162, 235, 0.5)"
+CHART_BORDER = "rgba(54, 162, 235, 1)"
 
 
 def home_view(request):
     if request.user.is_authenticated:
-        return redirect("analysis:history")
-    return redirect("accounts:login")
+        return redirect("analysis:dashboard")
+    return render(request, "analysis/home.html")
 
 
 @login_required
 def dashboard_view(request):
-    latest = Analysis.objects.filter(user=request.user).order_by("-uploaded_at").first()
-    recent_scores = list(latest.scores.all()[:DASHBOARD_RECENT_SCORES]) if latest else []
-    return render(
-        request,
-        "analysis/detail.html" if latest else "analysis/history.html",
-        {"analysis": latest, "scores": recent_scores, "analyses": [latest] if latest else []},
+    latest = (
+        Analysis.objects.filter(user=request.user)
+        .order_by("-uploaded_at")
+        .first()
     )
+    context = {"latest": latest}
+    if latest is not None:
+        context.update(
+            {
+                "analysis": latest,
+                "summary": _normalize_summary(latest.summary_json or {}),
+                "recent_scores": list(latest.scores.all()[:DASHBOARD_RECENT_SCORES]),
+                "chart_data_json": json.dumps(_build_chart_data(latest)),
+            }
+        )
+    return render(request, "analysis/dashboard.html", context)
 
 
 @login_required
 def upload_view(request):
-    # Türkçe not: Pipeline bağımlılıkları yoksa sayfayı kapat.
     if request.method != "POST":
-        if PDFUploadForm is None:
-            messages.error(request, "Yükleme formu hazır değil.")
-            return redirect("analysis:history")
         return render(request, "analysis/upload.html", {"form": PDFUploadForm()})
-
-    if PDFUploadForm is None:
-        return HttpResponseNotAllowed(["GET"])
 
     form = PDFUploadForm(request.POST, request.FILES)
     if not form.is_valid():
         return render(request, "analysis/upload.html", {"form": form})
 
-    if extract_tables is None or clean_dataframe is None:
-        messages.error(request, "Analiz pipeline bileşenleri hazır değil.")
-        return render(request, "analysis/upload.html", {"form": form})
-
     pdf = form.cleaned_data["pdf_file"]
     logger.info("PDF yükleme: user=%s file=%s size=%d", request.user, pdf.name, pdf.size)
 
+    analysis = Analysis.objects.create(
+        user=request.user,
+        pdf_file=pdf,
+        file_name=pdf.name,
+        status=Analysis.Status.PROCESSING,
+    )
+
+    # DEMO MODE: pipeline'ı bypass et, sabit LGS karnesini göster.
+    from django.conf import settings as _settings
+    if getattr(_settings, "DEMO_MODE", False):
+        import time
+        from core.demo_data import populate_demo_analysis
+        populate_demo_analysis(analysis)
+        # Loading animasyonunun görünmesi için suni gecikme — UX için.
+        time.sleep(4.0)
+        logger.info("DEMO MODE: sabit karne ile dolduruldu (analysis=%s)", analysis.pk)
+        messages.success(request, "Analysis completed successfully.")
+        return redirect("analysis:detail", pk=analysis.pk)
+
     try:
-        rows = extract_tables(pdf)
-        df = clean_dataframe(rows)
-    except Exception:
-        logger.exception("Pipeline başarısız")
-        messages.error(request, "Dosya işlenemedi.")
-        return render(request, "analysis/upload.html", {"form": form})
+        ext = Path(pdf.name).suffix.lower().lstrip(".")
+        is_pdf = ext == "pdf"
 
-    analysis = Analysis.objects.create(user=request.user, file_name=getattr(pdf, "name", "upload.pdf"))
+        df_raw = None
+        df_canonical = pd.DataFrame()
+        extraction_method = "text"
 
-    score_objs = [
-        Score(
-            analysis=analysis,
-            subject=str(row.get("subject", "")),
-            score=float(row.get("score", 0)),
-            exam_date=row.get("exam_date") or None,
-        )
-        for _, row in df.iterrows()
-    ]
-    Score.objects.bulk_create(score_objs)
+        # PDF için önce hızlı text yolu
+        if is_pdf:
+            df_raw = extract_exam_data(analysis.pdf_file.path)
+            df_canonical = _to_canonical(df_raw) if df_raw is not None else pd.DataFrame()
 
-    messages.success(request, "Analiz kaydedildi.")
-    return redirect("analysis:detail", pk=analysis.pk)
+        # Boşsa veya zaten image ise Vision'a düş
+        ai_enabled = getattr(_settings, "AI_ADVISOR_ENABLED", False)
+        if df_canonical.empty:
+            if ai_enabled:
+                if is_pdf:
+                    logger.info("Text extraction boş — Vision fallback'e geçiliyor")
+                else:
+                    logger.info("Image dosyası — doğrudan Vision'a gönderiliyor (.%s)", ext)
+                df_vision = extract_via_vision(analysis.pdf_file.path)
+                if df_vision is not None and not df_vision.empty:
+                    df_raw = df_vision
+                    df_canonical = _to_canonical(df_raw)
+                    extraction_method = "vision"
+
+        if df_canonical.empty:
+            if not ai_enabled and not is_pdf:
+                raise ValueError(
+                    "Image files require Gemini AI support. The GEMINI_API_KEY "
+                    "environment variable is not set. Start the server with "
+                    "'GEMINI_API_KEY=... python manage.py runserver' or upload a "
+                    "text-based PDF instead."
+                )
+            if not ai_enabled:
+                raise ValueError(
+                    "Could not extract a text table from the PDF (it may be "
+                    "scanned/image-based). Set GEMINI_API_KEY to enable AI support."
+                )
+            raise ValueError(
+                "Could not extract data from the file. Image quality may be too "
+                "low or the table format may differ from what's expected. Try a "
+                "clearer photo."
+            )
+
+        summary_raw = compute_summary(df_canonical)
+        summary = _normalize_summary(summary_raw)
+
+        try:
+            predicted, r2 = predict_next_score(df_canonical)
+        except Exception:
+            logger.exception("Tahmin başarısız (yetersiz veri olabilir)")
+            predicted, r2 = None, None
+
+        try:
+            ai_advice = ai_analyze(
+                student_name=str(summary_raw.get("student_name", "")),
+                summary=summary_raw,
+                subject_scores=df_canonical[["subject", "score"]].to_dict("records"),
+                raw_text=df_raw.to_string()[:3000],
+            )
+        except Exception:
+            logger.exception("AI advisor tamamen başarısız")
+            ai_advice = {}
+        summary_raw["ai_advice"] = ai_advice
+        summary_raw["extraction_method"] = extraction_method
+
+        Score.objects.bulk_create([
+            Score(
+                analysis=analysis,
+                subject=row["subject"],
+                score=float(row["score"]),
+                exam_date=_as_date(row.get("exam_date")),
+            )
+            for _, row in df_canonical.iterrows()
+        ])
+
+        analysis.summary_json = summary_raw
+        analysis.predicted_score = predicted
+        analysis.r2_score = r2
+        analysis.status = Analysis.Status.COMPLETED
+        analysis.save()
+
+        logger.info("Analiz tamamlandı: id=%s scores=%d", analysis.pk, len(df_canonical))
+        messages.success(request, "Analysis completed successfully.")
+        return redirect("analysis:detail", pk=analysis.pk)
+
+    except Exception as exc:
+        logger.exception("Pipeline hatası")
+        analysis.status = Analysis.Status.FAILED
+        analysis.save(update_fields=["status"])
+        messages.error(request, f"Analysis failed: {exc}")
+        return redirect("analysis:dashboard")
 
 
 @login_required
@@ -111,7 +194,7 @@ def history_view(request):
     qs = Analysis.objects.filter(user=request.user).order_by("-uploaded_at")
     paginator = Paginator(qs, HISTORY_PAGE_SIZE)
     page = paginator.get_page(request.GET.get("page"))
-    return render(request, "analysis/history.html", {"page": page, "analyses": page.object_list})
+    return render(request, "analysis/history.html", {"page": page})
 
 
 @login_required
@@ -121,24 +204,153 @@ def detail_view(request, pk):
     return render(
         request,
         "analysis/detail.html",
-        {"analysis": analysis, "scores": scores, "chart_data_json": json.dumps(_build_chart_data(analysis))},
+        {
+            "analysis": analysis,
+            "scores": scores,
+            "summary": _normalize_summary(analysis.summary_json or {}),
+            "chart_data_json": json.dumps(_build_chart_data(analysis)),
+        },
     )
 
 
-def _build_chart_data(analysis):
-    scores = list(analysis.scores.all())
-    by_subject = {}
-    timeline = []
-    for s in scores:
+def _as_date(v):
+    """Pandas Timestamp / datetime.date / None için tek bir DateField uyumlu değer döndürür."""
+    if v is None:
+        return None
+    if hasattr(v, "date") and not isinstance(v, date):
+        return v.date()
+    return v
+
+
+def _normalize(s: str) -> str:
+    """Türkçe karakterleri ASCII'leştirir; pdfplumber bazen � üretiyor — ona da hazırız."""
+    if s is None:
+        return ""
+    s = str(s).lower()
+    table = str.maketrans({
+        "ı": "i", "İ": "i", "ş": "s", "Ş": "s", "ğ": "g", "Ğ": "g",
+        "ç": "c", "Ç": "c", "ö": "o", "Ö": "o", "ü": "u", "Ü": "u",
+        "�": "",  # mojibake replacement char
+    })
+    return s.translate(table)
+
+
+def _matches(text: str, *needles: str) -> bool:
+    """Normalize edilmiş text içinde verilen anahtarlardan herhangi biri var mı?
+
+    Anahtarın da Türkçe formu olabilir; ikisini de normalize edip karşılaştırır.
+    """
+    norm = _normalize(text)
+    return any(_normalize(n) in norm for n in needles)
+
+
+def _to_canonical(df_raw: pd.DataFrame) -> pd.DataFrame:
+    """Ham PDF DataFrame'ini kanonik (subject, score, exam_date) şemasına çevirir.
+
+    DataFrame içinde "Ders/Soru/Doğru" başlık satırını arar (Türkçe karakter veya ASCII
+    fallback ile); sonrasındaki veri satırlarını ders/soru/doğru olarak ayrıştırır.
+
+    Kural: score = (Doğru / Soru) * 100 (yüzde başarı). PDF'te tarih yoksa bugünün tarihi.
+    """
+    empty = pd.DataFrame(columns=["subject", "score", "exam_date"])
+
+    # 1) Ders + Doğru + Soru anahtarlarını içeren satır = header
+    header_idx = None
+    for idx in range(len(df_raw)):
+        row_text = " ".join(str(v) for v in df_raw.iloc[idx].values if v is not None)
+        if _matches(row_text, "ders") and _matches(row_text, "doğru", "dogru") and _matches(row_text, "soru"):
+            header_idx = idx
+            break
+
+    if header_idx is None:
+        # Belki kolonların kendisi headers (Mehlika'nın orijinal varsayımı)
+        cols_text = " ".join(str(c) for c in df_raw.columns)
+        if _matches(cols_text, "ders") and _matches(cols_text, "doğru", "dogru"):
+            data = df_raw.copy()
+            headers = [str(c) for c in df_raw.columns]
+        else:
+            return empty
+    else:
+        headers = [str(v) if v is not None else f"col{i}" for i, v in enumerate(df_raw.iloc[header_idx].values)]
+        data = df_raw.iloc[header_idx + 1 :].copy()
+        data.columns = headers
+
+    # 2) Hangi kolon ders, hangisi soru/doğru?
+    def _find_col(*needles: str):
+        for c in data.columns:
+            if _matches(c, *needles):
+                return c
+        return None
+
+    ders_col = _find_col("ders")
+    soru_col = _find_col("soru")
+    dogru_col = _find_col("doğru", "dogru")
+    if ders_col is None or soru_col is None or dogru_col is None:
+        return empty
+
+    import numpy as np
+    soru = pd.to_numeric(data[soru_col], errors="coerce")
+    dogru = pd.to_numeric(data[dogru_col], errors="coerce")
+    score = (dogru / soru * 100).replace([np.inf, -np.inf], np.nan).round(2)
+
+    out = pd.DataFrame({
+        "subject": data[ders_col].astype(str).str.strip(),
+        "score": score,
+        "exam_date": [pd.Timestamp.today().normalize()] * len(data),
+    }).dropna(subset=["subject", "score"])
+    out = out[out["subject"].str.len() > 0]
+    out = out[~out["subject"].str.lower().isin({"ders", "nan", "none", ""})]
+    return out.reset_index(drop=True)
+
+
+def _normalize_summary(raw: dict) -> dict:
+    """İdil'in döndürdüğü {average, max_score, min_score, subject_averages} sözlüğünü
+    template'lerin beklediği {mean, max, min, by_subject} şemasına eşler."""
+    if not raw:
+        return {}
+    return {
+        "mean": raw.get("average", raw.get("mean", 0)),
+        "max": raw.get("max_score", raw.get("max", 0)),
+        "min": raw.get("min_score", raw.get("min", 0)),
+        "by_subject": raw.get("subject_averages", raw.get("by_subject", {})),
+    }
+
+
+_LABEL_SHORTCUTS = {
+    "Religious Studies and Ethics": "Religious Studies",
+    "Turkish History and Reforms": "History",
+    "Din Kültürü ve Ahlak Bilgisi": "Religious Studies",
+    "T.C. İnkılap Tarihi ve Atatürkçülük": "History",
+    "Fen Bilimleri": "Science",
+}
+
+
+def _shorten_label(name: str) -> str:
+    """Uzun ders adlarını grafik için kısaltır; tablolar tam adı kullanmaya devam eder."""
+    return _LABEL_SHORTCUTS.get(name, name)
+
+
+def _build_chart_data(analysis) -> dict:
+    """Chart.js-ready format döner: {labels: [...], datasets: [{label, data, backgroundColor}]}.
+
+    Sema'nın dashboard.html ve detail.html'deki ``data: chartData`` kullanımına uyumlu.
+    """
+    by_subject: dict[str, list[float]] = {}
+    for s in analysis.scores.all():
         by_subject.setdefault(s.subject, []).append(float(s.score))
-        if s.exam_date is not None:
-            timeline.append({"date": s.exam_date.isoformat(), "score": float(s.score), "subject": s.subject})
 
-    bar = {"labels": list(by_subject.keys()), "data": [sum(v) / len(v) for v in by_subject.values()] if by_subject else []}
-    timeline.sort(key=lambda r: r["date"])
-    return {"bar": bar, "timeline": timeline}
+    labels = [_shorten_label(name) for name in by_subject.keys()]
+    averages = [round(sum(v) / len(v), 2) for v in by_subject.values()]
 
-
-# Türkçe not: Eski isim uyumluluğu
-history = history_view
-detail = detail_view
+    return {
+        "labels": labels,
+        "datasets": [
+            {
+                "label": "Subject Average",
+                "data": averages,
+                "backgroundColor": CHART_BG,
+                "borderColor": CHART_BORDER,
+                "borderWidth": 1,
+            }
+        ],
+    }

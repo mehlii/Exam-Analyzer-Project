@@ -11,5 +11,5 @@ urlpatterns = [
     path("dashboard/", views.dashboard_view, name="dashboard"),
     path("upload/", views.upload_view, name="upload"),
     path("history/", views.history_view, name="history"),
-    path("<int:pk>/", views.detail_view, name="detail"),
+    path("analysis/<int:pk>/", views.detail_view, name="detail"),
 ]

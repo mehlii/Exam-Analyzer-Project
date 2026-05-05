@@ -19,7 +19,14 @@ class Analysis(models.Model):
         verbose_name="Kullanıcı",
     )
     uploaded_at = models.DateTimeField(auto_now_add=True, verbose_name="Yüklenme zamanı")
-    file_name = models.CharField(max_length=255, verbose_name="Dosya adı")
+    file_name = models.CharField(max_length=255, verbose_name="Dosya adı", blank=True)
+    pdf_file = models.FileField(
+        upload_to="analyses/%Y/%m/", null=True, blank=True, verbose_name="PDF dosyası"
+    )
+    summary_json = models.JSONField(default=dict, blank=True, verbose_name="Özet JSON")
+    predicted_score = models.FloatField(null=True, blank=True, verbose_name="Tahmin notu")
+    r2_score = models.FloatField(null=True, blank=True, verbose_name="R² skoru")
+    student_name = models.CharField(max_length=120, blank=True, verbose_name="Öğrenci adı")
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
@@ -45,7 +52,7 @@ class Score(models.Model):
     )
     subject = models.CharField(max_length=100, verbose_name="Ders")
     score = models.DecimalField(max_digits=6, decimal_places=2, verbose_name="Puan")
-    exam_date = models.DateField(verbose_name="Sınav tarihi")
+    exam_date = models.DateField(null=True, blank=True, verbose_name="Sınav tarihi")
 
     class Meta:
         ordering = ["-exam_date", "subject"]

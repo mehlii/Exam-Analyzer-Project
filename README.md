@@ -329,13 +329,13 @@ pytest tests/
 
 **Course**: YMH210/220 — Python (2025-2026)
 
-| Member | Role / Responsibility |
+| Member | Main Responsibility Area |
 |---|---|
-| **Nisa Apaydın** | Pipeline orchestration (`analysis/views.py`), domain adapter, AI integration, frontend redesign, EN translation, demo mode, integration |
-| **Sema İnce** | Frontend templates (initial scaffold, registration/login flow) |
-| **Mehlika Türktan** | Core PDF reader & data cleaner (`core/pdf_reader.py`, `core/cleaner.py`) |
-| **İdil Kınem** | Analyzer & predictor (`core/analyzer.py`, `core/predictor.py`) |
-| **Güler** | Models, accounts app, admin, migrations |
+| **Mehlika Türktan** | PDF & Data Core (core) |
+| **Nisa Apaydın** | Django Views & Integration (backend orchestrator) |
+| **Güler Şenel** | Models, Authentication & Admin |
+| **Sema İnce** | Frontend & Templates (UI/UX) |
+| **İdil Kinem Karataş** | Analysis, Prediction & Academic Report |
 
 Branch history is preserved on the [GitHub repo](https://github.com/mehlii/Exam-Analyzer-Project) — see `origin/guler`, `origin/sema/frontend-templates`, `origin/mehlika-core`, `origin/idil-kinem-analiz`, `origin/nisa/views-and-pipeline` for individual contributions.
 
